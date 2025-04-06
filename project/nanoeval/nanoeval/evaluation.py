@@ -277,7 +277,6 @@ async def run_eval_in_database(run_id: str) -> dict[str, Any]:
                 pbar.total = num_tasks
                 pbar.update(len(results) - pbar.n)
                 await spec.eval.update_progress(results_without_system_errors, pbar)
-
                 # Completed all tasks in the db
                 if len(results) == num_tasks:
                     break
@@ -324,8 +323,9 @@ async def run_eval_in_database(run_id: str) -> dict[str, Any]:
             )
         raise
 
-
 async def run(spec: EvalSpec) -> dict[str, Any]:  # type: ignore
+
+
     tasks = list(await spec.eval.get_tasks())
     assert len(tasks) > 0, "No tasks to evaluate"
 

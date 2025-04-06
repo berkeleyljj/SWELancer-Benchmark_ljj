@@ -36,49 +36,87 @@ from typing import Any, AsyncGenerator, Generator
 from nanoeval_alcatraz.task_to_alcatraz_config import task_to_alcatraz_config
 from nanoeval_alcatraz.alcatraz_computer_interface import AlcatrazComputerInterface
 
-from openai import AsyncOpenAI
+#from openai import AsyncOpenAI
 import os
 import tiktoken
+import httpx
+
+VLLM_API_URL = "http://localhost:9001/v1/chat/completions"
+VLLM_MODEL_NAME = "Qwen/QwQ-32B"  # adjust this if your vLLM model has a different internal name
 
 
-client = AsyncOpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY"),  # This is the default and can be omitted
-)
+#client = AsyncOpenAI(
+#   api_key=os.environ.get("OPENAI_API_KEY"),  # This is the default and can be omitted
+#)
 
 
-def count_tokens(messages: list[dict[str, Any]], model: str = "gpt-4") -> int:
-    """Count the number of tokens in a list of messages."""
-    encoding = tiktoken.encoding_for_model(model)
-    num_tokens = 0
+# def count_tokens(messages: list[dict[str, Any]], model: str = "gpt-4") -> int:
+#     """Count the number of tokens in a list of messages."""
+#     encoding = tiktoken.encoding_for_model(model)
+#     num_tokens = 0
     
+#     for message in messages:
+#         # Every message follows format: {"role": role, "content": content}
+#         num_tokens += 4  # Every message follows format: <im_start>{role/name}\n{content}<im_end>\n
+#         for key, value in message.items():
+#             num_tokens += len(encoding.encode(str(value)))
+    
+#     return num_tokens
+
+# def trim_messages(messages: list[dict[str, Any]], max_tokens: int, model: str = "Qwen/QwQ-32B") -> list[dict[str, Any]]:
+#     """Trim messages to fit within token limit by removing older messages."""
+#     while len(messages) > 1 and count_tokens(messages, model) > max_tokens:
+#         messages.pop(1)
+#     return messages
+
+
+def count_tokens(messages: list[dict[str, Any]], encoding_name: str = "cl100k_base") -> int:
+    try:
+        encoding = tiktoken.get_encoding(encoding_name)
+    except Exception:
+        encoding = tiktoken.get_encoding("cl100k_base")
+
+    num_tokens = 0
     for message in messages:
-        # Every message follows format: {"role": role, "content": content}
-        num_tokens += 4  # Every message follows format: <im_start>{role/name}\n{content}<im_end>\n
+        num_tokens += 4  # standard formatting overhead
         for key, value in message.items():
             num_tokens += len(encoding.encode(str(value)))
-    
     return num_tokens
 
-def trim_messages(messages: list[dict[str, Any]], max_tokens: int, model: str = "gpt-4") -> list[dict[str, Any]]:
-    """Trim messages to fit within token limit by removing older messages."""
-    while len(messages) > 1 and count_tokens(messages, model) > max_tokens:
+def trim_messages(messages: list[dict[str, Any]], max_tokens: int, encoding_name: str = "cl100k_base", model: str = "Qwen/QwQ-32B") -> list[dict[str, Any]]:
+    while len(messages) > 1 and count_tokens(messages, encoding_name) > max_tokens:
         messages.pop(1)
     return messages
 
-async def get_model_response(messages: list[dict[str, Any]]) -> str:
-    messages = trim_messages(messages, 110000)
+# async def get_model_response(messages: list[dict[str, Any]]) -> str:
+#     messages = trim_messages(messages, 110000)
     
-    chat_completion = await client.chat.completions.create(
-        messages=messages, # type: ignore
-        model="gpt-4o",
-    )
-    return chat_completion.choices[0].message.content # type: ignore
+#     chat_completion = await client.chat.completions.create(
+#         messages=messages, # type: ignore
+#         model="gpt-4o",
+#     )
+#     return chat_completion.choices[0].message.content # type: ignore
 
+async def get_model_response(messages: list[dict[str, Any]]) -> str:
+    messages = trim_messages(messages, 110000, model=VLLM_MODEL_NAME,  encoding_name="cl100k_base")
+    async with httpx.AsyncClient() as client:
+        chat_completion = await client.post(
+            VLLM_API_URL,
+            json={
+                "model": VLLM_MODEL_NAME,
+                "messages": messages,
+                "temperature": 1.0,
+                "max_tokens": 4096,
+            },
+            timeout=600.0,
+        )
+
+    return chat_completion.json()["choices"][0]["message"]["content"]
 
 @chz.chz
 class SimpleAgentSolver(PythonCodingSolver):
     name: str = "SimpleAgentSolver"
-    model: str = "gpt-4o"
+    model: str = "Qwen/QwQ-32B"
 
     def shortname(self) -> str:
         return "simple-solver"
@@ -95,6 +133,11 @@ class SimpleAgentSolver(PythonCodingSolver):
     @override
     async def run(self, task: ComputerTask) -> AsyncGenerator[Step | FinalResult, None]:
         try:
+            task.resources.cpu = 4
+            task.resources.memory = 20000
+            task.limits.cpu = 4
+            task.limits.memory = 20000
+
             async with self._start_computer(task) as computer:
                 print(computer)
                 # 1. Run the task setup

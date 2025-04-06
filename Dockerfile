@@ -33,7 +33,8 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends
 
 # Install conda
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh -O /tmp/miniconda.sh \
+
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh \
     && bash /tmp/miniconda.sh -b -p /opt/conda \
     && rm -f /tmp/miniconda.sh \
     && /opt/conda/bin/conda clean -ya
@@ -155,5 +156,7 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1 && \
     update-alternatives --set python /usr/bin/python3
 
 # Set the entrypoint and default command
-ENTRYPOINT ["/bin/bash", "-l", "-c"]
-CMD ["/app/tests/run.sh"]
+#ENTRYPOINT ["/bin/bash", "-l", "-c"]
+#CMD ["/app/tests/run.sh"]
+
+CMD ["/bin/bash"]

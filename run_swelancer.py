@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-# Load environment before importing anything else
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -20,20 +18,21 @@ def parse_args():
 async def main() -> None:
     args = parse_args()
     taskset = args.issue_ids if args.issue_ids else None
-
+    ########
     report = await nanoeval.run(
         EvalSpec(
             # taskset is a list of ISSUE_IDs you wish to evaluate (e.g., ["123", "456_789"])
             eval=SWELancerEval(
-                solver=SimpleAgentSolver(model="gpt-4o"),
+                solver=SimpleAgentSolver(model="Qwen/QwQ-32B"),
                 taskset=taskset
             ),
             runner=RunnerArgs(
-                concurrency=25,
+                concurrency=5,
                 experimental_use_multiprocessing=True,
                 enable_slackbot=False,
                 recorder=dummy_recorder(),
-                max_retries=5
+                max_retries=1,
+                model_name="Qwen/QwQ-32B"
             ),
         )
     )

@@ -5,8 +5,11 @@ load_dotenv()
 from swelancer import SWELancerEval 
 import argparse
 import nanoeval
+import logging
+#from nanoeval.recorder import file_recorder
 from nanoeval.evaluation import EvalSpec, RunnerArgs
 from nanoeval.recorder import dummy_recorder
+from nanoeval.json_recorder import json_recorder
 from nanoeval.setup import nanoeval_entrypoint
 from swelancer_agent import SimpleAgentSolver
 
@@ -19,6 +22,7 @@ async def main() -> None:
     args = parse_args()
     taskset = args.issue_ids if args.issue_ids else None
     ########
+    logging.basicConfig(level=logging.DEBUG)
     report = await nanoeval.run(
         EvalSpec(
             # taskset is a list of ISSUE_IDs you wish to evaluate (e.g., ["123", "456_789"])
@@ -27,10 +31,10 @@ async def main() -> None:
                 taskset=taskset
             ),
             runner=RunnerArgs(
-                concurrency=5,
+                concurrency=10,
                 experimental_use_multiprocessing=True,
                 enable_slackbot=False,
-                recorder=dummy_recorder(),
+                recorder=json_recorder(),
                 max_retries=1,
                 model_name="Qwen/QwQ-32B"
             ),

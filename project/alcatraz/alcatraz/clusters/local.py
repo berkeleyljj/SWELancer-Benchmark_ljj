@@ -492,16 +492,39 @@ class BaseAlcatrazCluster(ABC):
                 logger.info("Skipping pull for %s", image)
 
         logger.info("Creating network for %s", self.main_image)
-        try:
-            self.docker_network = await asyncio.to_thread(
-                self.docker_client.networks.create, "tinydockernet-" + self.container_group_name
-            )
-        except docker.errors.APIError as e:
-            if "all predefined address pools have been fully subnetted" in str(e):
-                raise RuntimeError(
-                    "Too many docker networks have been created. Most machines/laptops default to allowing 16 LocalCluster instances."
-                ) from e
-            raise
+        
+        ### Retry fix
+        network_name = "tinydockernet-" + self.container_group_name  # NEW: store network name in variable
+        for attempt in range(3):  # NEW: retry loop with 3 attempts
+            try:
+                self.docker_network = await asyncio.to_thread(
+                    self.docker_client.networks.create, network_name
+                )
+                # NEW: Verify the network exists by fetching it back
+                await asyncio.to_thread(self.docker_client.networks.get, self.docker_network.id)
+                logger.info("Network created successfully on attempt %d", attempt + 1)  # NEW: log success
+                break  # Exit the loop if creation is successful
+            except (docker.errors.APIError, NotFound) as e:
+                # NEW: Check if the error indicates subnet exhaustion; if so, re-raise immediately
+                if "all predefined address pools have been fully subnetted" in str(e):
+                    raise RuntimeError(
+                        "Too many docker networks have been created. Most machines/laptops default to allowing 16 LocalCluster instances."
+                    ) from e
+                if attempt < 2:  # NEW: if not the last attempt, wait and retry
+                    logger.warning("Network creation failed on attempt %d, retrying...: %s", attempt+1, e)
+                    await asyncio.sleep(1)  # NEW: wait 1 second before retrying
+                else:
+                    raise  # NEW: On the last attempt, re-raise the exception
+        # try:
+        #     self.docker_network = await asyncio.to_thread(
+        #         self.docker_client.networks.create, "tinydockernet-" + self.container_group_name
+        #     )
+        # except docker.errors.APIError as e:
+        #     if "all predefined address pools have been fully subnetted" in str(e):
+        #         raise RuntimeError(
+        #             "Too many docker networks have been created. Most machines/laptops default to allowing 16 LocalCluster instances."
+        #         ) from e
+        #     raise
         if isinstance(self, LocalCluster):
             self._exit_stack.push_async_callback(
                 lambda: asyncio.to_thread(self.docker_network.remove)

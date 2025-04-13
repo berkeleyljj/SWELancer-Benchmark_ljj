@@ -10,7 +10,6 @@ from nanoeval.recorder_protocol import RecorderConfig, RecorderProtocol
 
 logger = logging.getLogger(__name__)
 
-
 recorder: ContextVar[RecorderProtocol] = ContextVar("recorder")
 
 
@@ -35,6 +34,6 @@ def set_default_recorder(
 
 def dummy_recorder(log: bool = True) -> RecorderConfig:
     """
-    Returns a dummy recorder that does nothing.
+    Returns a simple file recorder that fully records the LLM output trace to 'llm_trace.log'.
     """
     return get_library_config().get_dummy_recorder(log)

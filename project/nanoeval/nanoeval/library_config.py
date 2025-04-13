@@ -4,6 +4,7 @@ import functools
 import logging
 import os
 import tempfile
+import threading  # NEW: for thread-safe file writes
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
@@ -20,7 +21,6 @@ from nanoeval.recorder_protocol import BasicRunSpec, RecorderConfig, RecorderPro
 if TYPE_CHECKING:
     from nanoeval.eval import EvalSpec
 
-
 ENV_NANOEVAL_LOG_ALL = "NANOEVAL_LOG_ALL"
 
 
@@ -30,6 +30,8 @@ def root_dir() -> Path:
 
 
 logger = structlog.stdlib.get_logger(component=__name__)
+
+_TRACE_LOCK = threading.Lock()  # NEW: Global lock for safe file writes
 
 
 @dataclass
@@ -73,8 +75,16 @@ class _DefaultDummyRecorder(RecorderProtocol):
         extra_allowed_metadata_fields: list[str] | None = None,
         **extra: Any,
     ) -> None:
-        logger.info("Sampling: %s", sampled)
-        pass
+        # Prepare a trace entry that includes the prompt and the LLM output.
+        trace_entry = f"Prompt: {prompt}\nSampled: {sampled}\n"
+        if extra:
+            trace_entry += f"Extra: {extra}\n"
+        trace_entry += "-" * 80 + "\n"
+        # Write to file in a thread-safe manner.
+        with _TRACE_LOCK:
+            with open("llm_trace.log", "a", encoding="utf-8") as f:
+                f.write(trace_entry)
+        logger.info("Recorded LLM trace sampling.")
 
     def record_sample_completed(self, **extra: Any) -> None:
         pass
@@ -83,7 +93,11 @@ class _DefaultDummyRecorder(RecorderProtocol):
         pass
 
     def record_extra(self, data: Any) -> None:
-        pass
+        # Optionally record additional trace data.
+        with _TRACE_LOCK:
+            with open("llm_trace.log", "a", encoding="utf-8") as f:
+                f.write(f"Extra Data: {data}\n{'-'*80}\n")
+        logger.info("Recorded extra LLM trace data.")
 
     def record_final_report(self, final_report: Any) -> None:
         pass
@@ -153,8 +167,8 @@ class LibraryConfig:
 
     def setup_logging(self) -> None:
         # Set up structlog according to https://www.structlog.org/en/stable/standard-library.html
-        # Basically, we convert structlogs to logging-style record and then process them using
-        # structlog formatters into json for humio, and console for stdout
+        # Basically, we convert structlogs to logging-style records and then process them using
+        # structlog formatters into JSON for humio, and console for stdout.
         structlog.configure(
             processors=[
                 # Prepare event dict for `ProcessorFormatter`.
@@ -163,7 +177,7 @@ class LibraryConfig:
             logger_factory=structlog.stdlib.LoggerFactory(),
         )
 
-        # Remove all StreamHandlers from the root logger
+        # Remove all StreamHandlers from the root logger.
         for handler in logging.getLogger().handlers:
             if isinstance(handler, logging.StreamHandler):
                 logging.getLogger().removeHandler(handler)
@@ -183,7 +197,7 @@ class LibraryConfig:
                     ),
                     structlog.dev.ConsoleRenderer(),
                 ],
-                # logger -> structlog transforms
+                # logger -> structlog transforms.
                 foreign_pre_chain=[
                     structlog.stdlib.add_logger_name,
                     partial(_rename_field, "logger", "component"),
@@ -206,6 +220,7 @@ class LibraryConfig:
         yield
 
     def get_dummy_recorder(self, log: bool) -> RecorderConfig:
+        # Now returns a recorder config that fully records LLM output traces.
         return _DummyRecorderConfig()
 
     def get_default_recorder(self) -> RecorderConfig:
@@ -227,7 +242,7 @@ class LibraryConfig:
         # (instance, answer_group_id [int], is_correct)
         answer_group_correctness_df: pd.DataFrame,
     ) -> dict[str, float | str | dict[Any, Any]]:
-        # TODO add more metrics
+        # TODO add more metrics.
         return {
             "accuracy": (
                 samples_df.merge(answer_group_correctness_df, on=["instance", "answer_group_id"])

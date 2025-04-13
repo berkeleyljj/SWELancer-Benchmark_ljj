@@ -5,6 +5,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo 
 from pathlib import Path
 from typing import Any, Generator, Literal, Self
 
@@ -53,7 +54,7 @@ class JsonRecorder(RecorderProtocol):
 
     def _write_record(self, record_type: str, data: dict[str, Any]) -> None:
         record = {
-            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "timestamp": datetime.now(tz=ZoneInfo("America/Los_Angeles")).isoformat(),
             "record_type": record_type,
             "sample_id": self.sample_id,
             "group_id": self.group_id,
@@ -143,7 +144,8 @@ def json_recorder() -> RecorderConfig:
     Returns a recorder that writes results to a JSON Lines (.jsonl) file.
     """
 
-    timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d_T_%H-%M-%S_UTC")
+    #timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d_T_%H-%M-%S_UTC")
+    timestamp = datetime.now(tz=ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d_T_%H-%M-%S_PST")
     records_dir = Path(os.getenv("NANOEVAL_LOG_DIR", get_package_root() / "records"))
     records_dir.mkdir(parents=True, exist_ok=True)
     filename = records_dir / f"{timestamp}.jsonl"

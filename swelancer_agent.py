@@ -5,6 +5,7 @@ from nanoeval.solvers.computer_tasks.code_execution_interface import (
     ComputerInterface,
     JupyterComputerInterface,
 )
+from nanoeval.recorder import get_recorder
 from nanoeval.solvers.computer_tasks.solver import PythonCodingEval, strip_all_metadata
 from nanoeval.solvers.computer_tasks.steps import (
     FinalResult,
@@ -41,7 +42,7 @@ import os
 import tiktoken
 import httpx
 
-VLLM_API_URL = "http://localhost:9001/v1/chat/completions"
+VLLM_API_URL = "http://localhost:9002/v1/chat/completions"
 VLLM_MODEL_NAME = "Qwen/QwQ-32B"  # adjust this if your vLLM model has a different internal name
 
 
@@ -106,7 +107,7 @@ async def get_model_response(messages: list[dict[str, Any]]) -> str:
                 "model": VLLM_MODEL_NAME,
                 "messages": messages,
                 "temperature": 1.0,
-                "max_tokens": 4096,
+                "max_tokens": 32768,
             },
             timeout=600.0,
         )
@@ -174,8 +175,21 @@ Please note that the Python code is not a Jupyter notebook; you must write a ful
 
                     messages.append({"role": "assistant", "content": model_response})
 
-                    execution_output = None
+                    # Record the LLM output using the JSON recorder.
+                    try:
+                        recorder = get_recorder()
+                        # record the sampling event: use the most recent user message as prompt
+                        recorder.record_sampling(
+                            prompt=messages[-1]["content"],
+                            sampled=model_response,
+                            turn=max_turns - remaining_turns  
+                        )
+                    except Exception as record_err:
+                        print("Error recording sampling:", record_err)
 
+                    messages.append({"role": "assistant", "content": model_response})
+
+                    execution_output = None
                     #Check for user-tool calls
                     if "<user-tool>" in model_response:
                         print('User tool called.')
